@@ -9,6 +9,13 @@ if sys.version_info < (2, 7):
     print >> sys.stderr, "Error: Python 2.7 or newer required"
     sys.exit(1)
 
+try:
+    import eventlet
+    eventlet.monkey_patch()
+except ImportError:
+    print >> sys.stderr, "Error: Eventlet required"
+    sys.exit(1)
+
 import argparse, csv, httplib, json, os, os.path, re, urllib2, zipfile
 
 
@@ -27,6 +34,9 @@ def read_args():
     p.add_argument("-q", "--quiet",
         help="do not show any status messages",
         action="store_true")
+    p.add_argument("--max-connections",
+        help="number of concurrent connections",
+        default=100, type=int)
     p.add_argument("--max-timeout",
         help="number of seconds per request",
         default=60, type=int)
@@ -165,8 +175,8 @@ def main():
         sites = read_sites()
         process_count = 0
         success_count = 0
-        for site in sites:
-            result = process_site(site, bugs)
+        pool = eventlet.GreenPool(ARGS.max_connections)
+        for result in pool.imap(lambda site: process_site(site, bugs), sites):
             process_count += 1
             if result["ok"]:
                 success_count += 1
