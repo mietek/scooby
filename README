@@ -1,0 +1,8 @@
+SCOOBY
+
+A script for finding all the tracking scripts recognised by Ghostery used on
+each of the top 100,000 websites, as given by Alexa.  Results are written to
+stdout; status messages are written to stderr.
+
+Copyright (C) 2011 Mietek Bak <mietek@varsztat.com>
+Distributed under the GNU GPL; see COPYING for more details.
