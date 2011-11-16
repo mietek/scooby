@@ -9,6 +9,13 @@ if sys.version_info < (2, 7):
     print >> sys.stderr, "Error: Python 2.7 or newer required"
     sys.exit(1)
 
+try:
+    import gevent, gevent.monkey, gevent.pool
+    gevent.monkey.patch_all()
+except ImportError:
+    print >> sys.stderr, "Error: gevent required"
+    sys.exit(1)
+
 import argparse, csv, httplib, json, os, os.path, re, urllib2, zipfile
 
 
@@ -27,6 +34,9 @@ def read_args():
     p.add_argument("-q", "--quiet",
         help="do not show any status messages",
         action="store_true")
+    p.add_argument("--max-connections",
+        help="number of concurrent connections",
+        default=100, type=int)
     p.add_argument("--max-sites",
         help="number of sites to process",
         default=1000, type=int)
@@ -141,10 +151,8 @@ def read_sites():
 def process_site(site, bugs, retries=0):
     show_status("Processing", site + "...")
     try:
-        site_data = urllib2.urlopen("http://" + site,
-            timeout=ARGS.max_timeout).read()
-    except KeyboardInterrupt:
-        raise
+        with gevent.Timeout(ARGS.max_timeout, Exception("Timeout")):
+            site_data = urllib2.urlopen("http://" + site).read()
     except Exception as e:
         if (retries < ARGS.max_retries):
             show_status("Failure processing site", site + ":",
@@ -165,6 +173,8 @@ def process_site(site, bugs, retries=0):
 
 class Orderly:
     def __init__(self):
+        self.lock = gevent.coros.BoundedSemaphore()
+        self.lock.acquire()
         self.total = 0
         self.processed = 0
         self.successes = 0
@@ -172,8 +182,10 @@ class Orderly:
     def start(self, sites):
         self.total = len(sites)
         print "["
+        self.lock.release()
 
     def show_result(self, result):
+        self.lock.acquire()
         if self.processed == 0:
             print " ",
         else:
@@ -183,8 +195,10 @@ class Orderly:
             self.successes += 1
         print json.dumps(result)
         sys.stdout.flush()
+        self.lock.release()
 
     def stop(self):
+        self.lock.acquire()
         print "]"
         show_status("Processed", self.processed,
             "out of", self.total, "sites",
@@ -202,8 +216,10 @@ def main():
         extract_sites()
         sites = read_sites()
         orderly.start(sites)
+        pool = gevent.pool.Pool(ARGS.max_connections)
         for site in sites:
-            orderly.show_result(process_site(site, bugs))
+            pool.spawn(lambda site: orderly.show_result(process_site(site, bugs)), site)
+        pool.join()
     except KeyboardInterrupt:
         pass
     finally:
