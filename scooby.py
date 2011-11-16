@@ -27,6 +27,9 @@ def read_args():
     p.add_argument("-q", "--quiet",
         help="do not show any status messages",
         action="store_true")
+    p.add_argument("--max-sites",
+        help="number of sites to process",
+        default=1000, type=int)
     p.add_argument("--max-timeout",
         help="number of seconds per request",
         default=60, type=int)
@@ -54,9 +57,9 @@ def read_args():
     g.add_argument("--sites-cache",
         help="path to local extracted sites list cache",
         default="/tmp/scooby_sites.csv")
-    g.add_argument("--sites-max-count",
+    g.add_argument("--max-sites-cache-size",
         help="number of sites to extract",
-        default=100000, type=int)
+        default=100000)
     global ARGS
     ARGS = p.parse_args()
 
@@ -115,15 +118,22 @@ def extract_sites():
         with zipfile.ZipFile(ARGS.sites_zip_cache, "r") as z:
             with z.open(ARGS.sites_csv_file) as src:
                 with open(ARGS.sites_cache, "w") as dst:
-                    for i in range(0, ARGS.sites_max_count):
+                    for i in range(0, ARGS.max_sites_cache_size):
                         dst.write(src.readline())
 
 def read_sites():
     assert os.path.exists(ARGS.sites_cache)
     show_status("Reading sites...")
+    sites = []
     with open(ARGS.sites_cache, "r") as f:
         table = csv.reader(f)
-        sites = [row[1] for row in table]
+        for i in range(0, ARGS.max_sites):
+            try:
+                row = table.next()
+            except StopIteration:
+                break
+            else:
+                sites.append(row[1])
     show_status("Read", len(sites), "sites")
     return sites
 
