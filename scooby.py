@@ -163,37 +163,51 @@ def process_site(site, bugs, retries=0):
         return {"site": site, "ok": True, "bug_ids": bug_ids}
 
 
+class Orderly:
+    def __init__(self):
+        self.total = 0
+        self.processed = 0
+        self.successes = 0
+
+    def start(self, sites):
+        self.total = len(sites)
+        print "["
+
+    def show_result(self, result):
+        if self.processed == 0:
+            print " ",
+        else:
+            print ",",
+        self.processed += 1
+        if result["ok"]:
+            self.successes += 1
+        print json.dumps(result)
+        sys.stdout.flush()
+
+    def stop(self):
+        print "]"
+        show_status("Processed", self.processed,
+            "out of", self.total, "sites",
+            "with", self.successes, "successes",
+            "and", self.processed - self.successes, "failures")
+
+
 def main():
     read_args()
-    first_row = False
+    orderly = Orderly()
     try:
-        print "["
         download_bugs()
         bugs = read_bugs()
         download_sites()
         extract_sites()
         sites = read_sites()
-        process_count = 0
-        success_count = 0
+        orderly.start(sites)
         for site in sites:
-            result = process_site(site, bugs)
-            process_count += 1
-            if result["ok"]:
-                success_count += 1
-            if first_row:
-                print " ",
-                first_row = False
-            else:
-                print ",",
-            print json.dumps(result)
-            sys.stdout.flush()
+            orderly.show_result(process_site(site, bugs))
     except KeyboardInterrupt:
         pass
     finally:
-        print "]"
-        show_status("Processed", process_count, "out of", len(sites), "sites",
-            "with", success_count, "successes",
-            "and", process_count - success_count, "failures")
+        orderly.stop()
 
 if __name__ == "__main__":
     main()
