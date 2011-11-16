@@ -37,6 +37,9 @@ def read_args():
     p.add_argument("--max-connections",
         help="number of concurrent connections",
         default=100, type=int)
+    p.add_argument("--max-sites",
+        help="number of sites to process",
+        default=1000, type=int)
     p.add_argument("--max-timeout",
         help="number of seconds per request",
         default=60, type=int)
@@ -64,9 +67,9 @@ def read_args():
     g.add_argument("--sites-cache",
         help="path to local extracted sites list cache",
         default="/tmp/scooby_sites.csv")
-    g.add_argument("--sites-max-count",
+    g.add_argument("--max-sites-cache-size",
         help="number of sites to extract",
-        default=100000, type=int)
+        default=100000)
     global ARGS
     ARGS = p.parse_args()
 
@@ -125,15 +128,22 @@ def extract_sites():
         with zipfile.ZipFile(ARGS.sites_zip_cache, "r") as z:
             with z.open(ARGS.sites_csv_file) as src:
                 with open(ARGS.sites_cache, "w") as dst:
-                    for i in range(0, ARGS.sites_max_count):
+                    for i in range(0, ARGS.max_sites_cache_size):
                         dst.write(src.readline())
 
 def read_sites():
     assert os.path.exists(ARGS.sites_cache)
     show_status("Reading sites...")
+    sites = []
     with open(ARGS.sites_cache, "r") as f:
         table = csv.reader(f)
-        sites = [row[1] for row in table]
+        for i in range(0, ARGS.max_sites):
+            try:
+                row = table.next()
+            except StopIteration:
+                break
+            else:
+                sites.append(row[1])
     show_status("Read", len(sites), "sites")
     return sites
 
@@ -163,37 +173,52 @@ def process_site(site, bugs, retries=0):
         return {"site": site, "ok": True, "bug_ids": bug_ids}
 
 
+class Orderly:
+    def __init__(self):
+        self.total = 0
+        self.processed = 0
+        self.successes = 0
+
+    def start(self, sites):
+        self.total = len(sites)
+        print "["
+
+    def show_result(self, result):
+        if self.processed == 0:
+            print " ",
+        else:
+            print ",",
+        self.processed += 1
+        if result["ok"]:
+            self.successes += 1
+        print json.dumps(result)
+        sys.stdout.flush()
+
+    def stop(self):
+        print "]"
+        show_status("Processed", self.processed,
+            "out of", self.total, "sites",
+            "with", self.successes, "successes",
+            "and", self.processed - self.successes, "failures")
+
+
 def main():
     read_args()
-    first_row = False
+    orderly = Orderly()
     try:
-        print "["
         download_bugs()
         bugs = read_bugs()
         download_sites()
         extract_sites()
         sites = read_sites()
-        process_count = 0
-        success_count = 0
+        orderly.start(sites)
         pool = eventlet.GreenPool(ARGS.max_connections)
         for result in pool.imap(lambda site: process_site(site, bugs), sites):
-            process_count += 1
-            if result["ok"]:
-                success_count += 1
-            if first_row:
-                print " ",
-                first_row = False
-            else:
-                print ",",
-            print json.dumps(result)
-            sys.stdout.flush()
+            pass
     except KeyboardInterrupt:
         pass
     finally:
-        print "]"
-        show_status("Processed", process_count, "out of", len(sites), "sites",
-            "with", success_count, "successes",
-            "and", process_count - success_count, "failures")
+        orderly.stop()
 
 if __name__ == "__main__":
     main()
