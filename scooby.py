@@ -151,10 +151,8 @@ def read_sites():
 def process_site(site, bugs, retries=0):
     show_status("Processing", site + "...")
     try:
-        site_data = urllib2.urlopen("http://" + site,
-            timeout=ARGS.max_timeout).read()
-    except KeyboardInterrupt:
-        raise
+        with eventlet.timeout.Timeout(ARGS.max_timeout, Exception("Timeout")):
+            site_data = urllib2.urlopen("http://" + site).read()
     except Exception as e:
         if (retries < ARGS.max_retries):
             show_status("Failure processing site", site + ":",
@@ -175,6 +173,8 @@ def process_site(site, bugs, retries=0):
 
 class Orderly:
     def __init__(self):
+        self.lock = eventlet.semaphore.BoundedSemaphore()
+        self.lock.acquire()
         self.total = 0
         self.processed = 0
         self.successes = 0
@@ -182,8 +182,10 @@ class Orderly:
     def start(self, sites):
         self.total = len(sites)
         print "["
+        self.lock.release()
 
     def show_result(self, result):
+        self.lock.acquire()
         if self.processed == 0:
             print " ",
         else:
@@ -193,8 +195,10 @@ class Orderly:
             self.successes += 1
         print json.dumps(result)
         sys.stdout.flush()
+        self.lock.release()
 
     def stop(self):
+        self.lock.acquire()
         print "]"
         show_status("Processed", self.processed,
             "out of", self.total, "sites",
@@ -213,8 +217,9 @@ def main():
         sites = read_sites()
         orderly.start(sites)
         pool = eventlet.GreenPool(ARGS.max_connections)
-        for result in pool.imap(lambda site: process_site(site, bugs), sites):
-            pass
+        for site in sites:
+            pool.spawn(lambda site: orderly.show_result(process_site(site, bugs)), site)
+        pool.waitall()
     except KeyboardInterrupt:
         pass
     finally:
