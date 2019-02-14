@@ -14,6 +14,12 @@ import argparse, csv, httplib, json, os, os.path, re, urllib2, zipfile
 
 ARGS = None
 
+def temp_path():
+    import platform
+    if 'Windows' == platform.system():
+        return "c:\\Temp\\"
+    return "/tmp/"
+
 def read_args():
     p = argparse.ArgumentParser(
         description="""A script for finding all the tracking scripts
@@ -42,7 +48,7 @@ def read_args():
         default="http://www.ghostery.com/update/bugs?format=json")
     g.add_argument("--bugs-cache",
         help="path to local bugs list cache",
-        default="/tmp/scooby_bugs.json")
+        default=temp_path() + "scooby_bugs.json")
     g = p.add_argument_group(
         "arguments for overriding sites-related defaults")
     g.add_argument("--sites-zip-url",
@@ -50,13 +56,13 @@ def read_args():
         default="http://s3.amazonaws.com/alexa-static/top-1m.csv.zip")
     g.add_argument("--sites-zip-cache",
         help="path to local sites list archive cache",
-        default="/tmp/scooby_all_sites.csv.zip")
+        default=temp_path() + "scooby_all_sites.csv.zip")
     g.add_argument("--sites-csv-file",
         help="name of archived sites list file",
         default="top-1m.csv")
     g.add_argument("--sites-cache",
         help="path to local extracted sites list cache",
-        default="/tmp/scooby_sites.csv")
+        default=temp_path() + "scooby_sites.csv")
     g.add_argument("--max-sites-cache-size",
         help="number of sites to extract",
         default=100000)
